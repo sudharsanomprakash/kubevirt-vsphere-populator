@@ -202,7 +202,7 @@ spec:
   volumes: [{name: data, persistentVolumeClaim: {claimName: app-01-root}}]
 YAML
 kubectl -n "$NS" wait pod/fs-reader --for=condition=Ready --timeout=300s >/dev/null
-for _ in $(seq 1 120); do kubectl -n "$NS" logs fs-reader | grep -q disk.img$ && break; sleep 5; done
+for _ in $(seq 1 120); do kubectl -n "$NS" logs fs-reader | grep -qE '^[0-9a-f]{64}  /data/disk.img$' && break; sleep 5; done
 FS_OUT=$(kubectl -n "$NS" logs fs-reader)
 echo "$FS_OUT" | tee -a "$REPORT"
 echo "$FS_OUT" | grep -q "^$DISK0_SHA  /data/disk.img" || { log "FAIL: filesystem destination sha256 differs from source"; exit 1; }
