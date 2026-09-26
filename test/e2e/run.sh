@@ -96,6 +96,17 @@ kubeadmConfigPatches:
     failCgroupV1: false
 PATCH
 fi
+if ! sh -c 'echo -999 > /proc/self/oom_score_adj' 2>/dev/null; then
+  # Nested/sandboxed hosts without CAP_SYS_RESOURCE cannot lower OOM scores,
+  # which containerd does for pod sandboxes; restrict it for this test cluster.
+  log "host cannot lower oom_score_adj: setting containerd restrict_oom_score_adj=true for the test cluster"
+  cat >> "$WORK/kind-config.yaml" <<'PATCH'
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri"]
+      restrict_oom_score_adj = true
+PATCH
+fi
 kind create cluster --name "$CLUSTER" --image "$KIND_NODE_IMAGE" --config "$WORK/kind-config.yaml" --wait 180s
 cleanup() {
   kubectl logs -n vsphere-populator-system deploy/vsphere-populator-controller > "$WORK/logs/controller.log" 2>&1 || true
