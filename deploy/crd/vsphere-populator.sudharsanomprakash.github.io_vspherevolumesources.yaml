@@ -1,0 +1,530 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: vspherevolumesources.vsphere-populator.sudharsanomprakash.github.io
+spec:
+  group: vsphere-populator.sudharsanomprakash.github.io
+  names:
+    categories:
+    - kubevirt
+    kind: VSphereVolumeSource
+    listKind: VSphereVolumeSourceList
+    plural: vspherevolumesources
+    shortNames:
+    - vsvs
+    singular: vspherevolumesource
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.server
+      name: Server
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].status
+      name: Accepted
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VSphereVolumeSource describes one virtual disk of a powered-off vSphere VM
+          that can populate PersistentVolumeClaims through spec.dataSourceRef.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VSphereVolumeSourceSpec identifies the source disk and how
+              to reach it.
+            properties:
+              credentialsSecretRef:
+                description: |-
+                  CredentialsSecretRef names a Secret in the same namespace with the keys
+                  "username" and "password", and optionally "ca.crt" (PEM bundle) and
+                  "thumbprint" (verified certificate fingerprint).
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
+              disk:
+                description: Disk identifies the virtual disk to export.
+                properties:
+                  busLocation:
+                    description: BusLocation is "<scsi|sata|nvme|ide>:<bus>:<unit>",
+                      for example "scsi:0:1".
+                    pattern: ^(scsi|sata|nvme|ide):[0-9]{1,2}:[0-9]{1,2}$
+                    type: string
+                  deviceKey:
+                    description: DeviceKey is the virtual device key, for example
+                      2000.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  expectedCapacityBytes:
+                    description: ExpectedCapacityBytes, when set, must equal the disk
+                      capacity.
+                    format: int64
+                    minimum: 512
+                    type: integer
+                  fileName:
+                    description: FileName is the backing file, for example "[datastore1]
+                      vm/vm_1.vmdk".
+                    maxLength: 1024
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of deviceKey, busLocation or fileName must
+                    be set
+                  rule: '[has(self.deviceKey), has(self.busLocation), has(self.fileName)].filter(x,
+                    x).size() == 1'
+              server:
+                description: Server is the vCenter or standalone ESXi host name, host:port
+                  or https URL.
+                maxLength: 512
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: server must use https
+                  rule: '!self.startsWith(''http://'')'
+                - message: server must not contain credentials
+                  rule: '!self.contains(''@'')'
+              tls:
+                description: |-
+                  TLS controls server certificate verification. Verification is always
+                  enabled unless insecureSkipVerifyForTestingOnly is set and the
+                  controller permits it.
+                properties:
+                  insecureSkipVerifyForTestingOnly:
+                    description: |-
+                      InsecureSkipVerifyForTestingOnly disables certificate verification.
+                      It is rejected unless the controller runs with
+                      --allow-insecure-tls-for-testing.
+                    type: boolean
+                  thumbprint:
+                    description: |-
+                      Thumbprint pins the server certificate by its SHA-1 or SHA-256
+                      fingerprint (hex, with or without colons). A thumbprint in the
+                      credentials Secret takes precedence.
+                    pattern: ^([0-9A-Fa-f]{2}:?){19}[0-9A-Fa-f]{2}$|^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$
+                    type: string
+                  trustLeaseThumbprints:
+                    description: |-
+                      TrustLeaseThumbprints accepts ESXi host certificates by the thumbprint
+                      that vCenter returns in the export lease over the verified API
+                      connection. Defaults to true.
+                    type: boolean
+                type: object
+              transfer:
+                description: Transfer tunes timeouts and verification.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout aborts an attempt when no export bytes
+                      arrive (default 5m).
+                    type: string
+                  leaseReadyTimeout:
+                    description: LeaseReadyTimeout bounds the wait for the export
+                      lease (default 10m).
+                    type: string
+                  requireManifest:
+                    description: |-
+                      RequireManifest fails the population if vSphere provides no manifest
+                      checksum for the exported stream.
+                    type: boolean
+                  timeout:
+                    description: 'Timeout bounds one attempt (default: no limit).'
+                    type: string
+                type: object
+              virtualMachine:
+                description: VirtualMachine identifies the source VM.
+                properties:
+                  biosUUID:
+                    pattern: ^[0-9A-Fa-f-]{32,36}$
+                    type: string
+                  datacenter:
+                    description: Datacenter restricts UUID and name searches.
+                    maxLength: 256
+                    type: string
+                  instanceUUID:
+                    pattern: ^[0-9A-Fa-f-]{32,36}$
+                    type: string
+                  moRef:
+                    pattern: ^[A-Za-z0-9_.:-]{1,80}$
+                    type: string
+                  name:
+                    maxLength: 80
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of moRef, instanceUUID, biosUUID or name must
+                    be set
+                  rule: '[has(self.moRef), has(self.instanceUUID), has(self.biosUUID),
+                    has(self.name)].filter(x, x).size() == 1'
+              worker:
+                description: Worker tunes the worker Job.
+                properties:
+                  activeDeadlineSeconds:
+                    description: ActiveDeadlineSeconds bounds the whole Job including
+                      retries.
+                    format: int64
+                    minimum: 60
+                    type: integer
+                  backoffLimit:
+                    description: BackoffLimit is the number of retries of the worker
+                      Job (default 2).
+                    format: int32
+                    maximum: 10
+                    minimum: 0
+                    type: integer
+                  resources:
+                    description: Resources for the worker container.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  scratch:
+                    description: Scratch configures the volume that stages the export
+                      stream.
+                    properties:
+                      size:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: Size of the scratch volume. Defaults to the PVC
+                          request plus 2% and 256Mi.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      storageClassName:
+                        type: string
+                    type: object
+                  tolerations:
+                    description: Tolerations for the worker pod.
+                    items:
+                      description: |-
+                        The pod this Toleration is attached to tolerates any taint that matches
+                        the triple <key,value,effect> using the matching operator <operator>.
+                      properties:
+                        effect:
+                          description: |-
+                            Effect indicates the taint effect to match. Empty means match all taint effects.
+                            When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                          type: string
+                        key:
+                          description: |-
+                            Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                            If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                          type: string
+                        operator:
+                          description: |-
+                            Operator represents a key's relationship to the value.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                            Exists is equivalent to wildcard for value, so that a pod can
+                            tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                          type: string
+                        tolerationSeconds:
+                          description: |-
+                            TolerationSeconds represents the period of time the toleration (which must be
+                            of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                            it is not set, which means tolerate the taint forever (do not evict). Zero and
+                            negative values will be treated as 0 (evict immediately) by the system.
+                          format: int64
+                          type: integer
+                        value:
+                          description: |-
+                            Value is the taint value the toleration matches to.
+                            If the operator is Exists, the value should be empty, otherwise just a regular string.
+                          type: string
+                      type: object
+                    type: array
+                type: object
+            required:
+            - credentialsSecretRef
+            - disk
+            - server
+            - virtualMachine
+            type: object
+          status:
+            description: VSphereVolumeSourceStatus reports populations from this source.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                format: int64
+                type: integer
+              populations:
+                description: Populations lists the PVCs populated (or being populated)
+                  from this source.
+                items:
+                  description: PopulationStatus describes the population of one PVC.
+                  properties:
+                    completionTime:
+                      format: date-time
+                      type: string
+                    failedAttempts:
+                      description: FailedAttempts counts failed worker pods.
+                      format: int32
+                      type: integer
+                    jobName:
+                      type: string
+                    message:
+                      type: string
+                    phase:
+                      enum:
+                      - Pending
+                      - WaitingForFirstConsumer
+                      - Running
+                      - Rebinding
+                      - Succeeded
+                      - Failed
+                      - Cancelled
+                      type: string
+                    progress:
+                      description: PopulationProgress is polled from the running worker.
+                      properties:
+                        bytesPerSecond:
+                          description: BytesPerSecond is the average download rate.
+                          format: int64
+                          type: integer
+                        convertPercent:
+                          description: ConvertPercent is qemu-img's progress as an
+                            integer percentage.
+                          format: int32
+                          type: integer
+                        guestBytes:
+                          description: GuestBytes is the guest disk offset covered
+                            so far.
+                          format: int64
+                          type: integer
+                        streamBytes:
+                          description: StreamBytes counts exported bytes received.
+                          format: int64
+                          type: integer
+                        transferPercent:
+                          description: TransferPercent is GuestBytes/VirtualSize as
+                            an integer percentage.
+                          format: int32
+                          type: integer
+                        updateTime:
+                          format: date-time
+                          type: string
+                        verifiedBytes:
+                          description: VerifiedBytes counts destination bytes read
+                            back.
+                          format: int64
+                          type: integer
+                        virtualSize:
+                          description: VirtualSize is the guest disk size.
+                          format: int64
+                          type: integer
+                        workerPhase:
+                          type: string
+                      type: object
+                    pvcName:
+                      type: string
+                    pvcUID:
+                      description: |-
+                        UID is a type that holds unique ID values, including UUIDs.  Because we
+                        don't ONLY use UUIDs, this is an alias to string.  Being a type captures
+                        intent and helps make sure that UIDs and names do not get conflated.
+                      type: string
+                    result:
+                      description: Result is recorded from the worker's validated
+                        termination message.
+                      properties:
+                        destinationDigest:
+                          type: string
+                        diskKey:
+                          format: int32
+                          type: integer
+                        exportBytes:
+                          format: int64
+                          type: integer
+                        exportMillis:
+                          description: ExportMillis is the download duration.
+                          format: int64
+                          type: integer
+                        exportSHA256:
+                          type: string
+                        guestDigest:
+                          type: string
+                        leaseKey:
+                          type: string
+                        manifestStatus:
+                          description: ManifestStatus is verified, unavailable, no-entry
+                            or no-checksum.
+                          type: string
+                        qemuImgVersion:
+                          type: string
+                        serverVersion:
+                          type: string
+                        totalMillis:
+                          description: TotalMillis is the worker's total duration.
+                          format: int64
+                          type: integer
+                        virtualSize:
+                          format: int64
+                          type: integer
+                        vmMoRef:
+                          type: string
+                      required:
+                      - destinationDigest
+                      - guestDigest
+                      - virtualSize
+                      type: object
+                    startTime:
+                      format: date-time
+                      type: string
+                  required:
+                  - phase
+                  - pvcName
+                  - pvcUID
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - pvcUID
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

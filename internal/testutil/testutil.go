@@ -48,3 +48,12 @@ func Fixture(t testing.TB, name string) string {
 	}
 	return p
 }
+
+// RequireEnvtest skips unless envtest assets are configured (the controller
+// test binary already exits early without them; this documents the dependency).
+func RequireEnvtest(t testing.TB) {
+	t.Helper()
+	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
+		t.Skip("KUBEBUILDER_ASSETS not set")
+	}
+}

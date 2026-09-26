@@ -96,7 +96,7 @@ type Probe struct {
 	Range     *HTTPResult `json:"range,omitempty"`
 	// RangeHonored is true when a Range request returned 206 with the bytes
 	// found at the same offset of a plain request.
-	RangeHonored *bool      `json:"rangeHonored,omitempty"`
+	RangeHonored *bool       `json:"rangeHonored,omitempty"`
 	Repeat       *HTTPResult `json:"repeat,omitempty"`
 	// StableAcrossRequests compares the first ProbeBytes of two plain requests.
 	StableAcrossRequests *bool     `json:"stableAcrossRequests,omitempty"`
