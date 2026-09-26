@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# Worker image: the worker binary plus qemu-img from Ubuntu's qemu-utils
+# package (GPL-2.0-or-later; see THIRD_PARTY_NOTICES.md for source
+# availability). Base images and the package version are pinned.
+FROM docker.io/library/golang:1.27.1-trixie@sha256:433790e515d27dc6003e847e644cc0af956985cf315c1c58a3b73ee2dd305183 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build \
+    -ldflags "-s -w -X github.com/sudharsanomprakash/kubevirt-vsphere-populator/internal/version.Version=${VERSION} -X github.com/sudharsanomprakash/kubevirt-vsphere-populator/internal/version.Commit=${COMMIT}" \
+    -o /out/vsphere-populator-worker ./cmd/vsphere-populator-worker
+
+FROM docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
+ARG QEMU_UTILS_VERSION=1:8.2.2+ds-0ubuntu1.18
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends "qemu-utils=${QEMU_UTILS_VERSION}" ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && qemu-img --version \
+ && dpkg-query -W -f='${Package} ${Version}\n' qemu-utils > /usr/share/doc/qemu-utils.version
+COPY --from=build /out/vsphere-populator-worker /usr/local/bin/vsphere-populator-worker
+COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /licenses/
+# UID 107 matches the qemu user KubeVirt uses; the controller may override it
+# (block-mode workers default to UID 0 with all capabilities dropped).
+USER 107:107
+ENTRYPOINT ["/usr/local/bin/vsphere-populator-worker"]

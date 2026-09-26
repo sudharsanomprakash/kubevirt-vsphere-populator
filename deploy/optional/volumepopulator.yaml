@@ -1,0 +1,9 @@
+# Registers the data source kind with the volume-data-source-validator
+# (populator.storage.k8s.io). Apply only if that CRD is installed.
+apiVersion: populator.storage.k8s.io/v1beta1
+kind: VolumePopulator
+metadata:
+  name: vsphere-volume-source
+sourceKind:
+  group: vsphere-populator.sudharsanomprakash.github.io
+  kind: VSphereVolumeSource

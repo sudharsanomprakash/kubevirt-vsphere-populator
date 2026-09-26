@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vsphere-populator-controller
+  namespace: vsphere-populator-system
+  labels:
+    app.kubernetes.io/name: vsphere-populator-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vsphere-populator-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vsphere-populator-controller
+    spec:
+      serviceAccountName: vsphere-populator-controller
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: ghcr.io/sudharsanomprakash/kubevirt-vsphere-populator-controller:v0.1.0-alpha.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --worker-image=ghcr.io/sudharsanomprakash/kubevirt-vsphere-populator-worker:v0.1.0-alpha.0
+            - --leader-elect=true
+            - --leader-election-namespace=vsphere-populator-system
+          ports:
+            - {name: metrics, containerPort: 8080}
+            - {name: health, containerPort: 8081}
+          readinessProbe:
+            httpGet: {path: /readyz, port: health}
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

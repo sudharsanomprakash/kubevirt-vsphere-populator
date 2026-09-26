@@ -1,0 +1,22 @@
+apiVersion: vsphere-populator.sudharsanomprakash.github.io/v1alpha1
+kind: VSphereVolumeSource
+metadata:
+  name: app-01-disk0
+  namespace: vm-migration
+spec:
+  server: vcenter.example.test
+  credentialsSecretRef:
+    name: vsphere-credentials
+  virtualMachine:
+    # Stable identity. Use moRef (e.g. vm-1234) or instanceUUID; names are
+    # accepted only when unique.
+    instanceUUID: 5012a6c4-8d2b-4f5e-9c1a-0123456789ab
+  disk:
+    busLocation: scsi:0:0
+    # Optional cross-check against vSphere's reported capacity.
+    expectedCapacityBytes: 21474836480
+  transfer:
+    idleTimeout: 5m
+    requireManifest: false
+  worker:
+    backoffLimit: 2

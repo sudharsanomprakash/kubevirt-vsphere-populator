@@ -2,6 +2,8 @@ module github.com/sudharsanomprakash/kubevirt-vsphere-populator
 
 go 1.26.0
 
+toolchain go1.27.1
+
 require (
 	github.com/vmware/govmomi v0.56.0
 	golang.org/x/sys v0.48.0

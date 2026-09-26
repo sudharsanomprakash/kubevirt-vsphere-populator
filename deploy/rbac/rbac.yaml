@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vsphere-populator-controller
+  namespace: vsphere-populator-system
+---
+# Cluster-wide permissions: PVCs may live in any namespace. The controller
+# never reads Secrets; worker pods mount the credentials Secret named by the
+# source in the PVC's namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vsphere-populator-controller
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [persistentvolumes]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [vsphere-populator.sudharsanomprakash.github.io]
+    resources: [vspherevolumesources]
+    verbs: [get, list, watch]
+  - apiGroups: [vsphere-populator.sudharsanomprakash.github.io]
+    resources: [vspherevolumesources/status]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vsphere-populator-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vsphere-populator-controller
+subjects:
+  - kind: ServiceAccount
+    name: vsphere-populator-controller
+    namespace: vsphere-populator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vsphere-populator-leader-election
+  namespace: vsphere-populator-system
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vsphere-populator-leader-election
+  namespace: vsphere-populator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vsphere-populator-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: vsphere-populator-controller
+    namespace: vsphere-populator-system
+---
+# Optional aggregated roles so that namespace admins/editors can manage sources.
+# Anyone who can create a VSphereVolumeSource and a PVC in a namespace can make
+# a worker pod mount any Secret in that namespace and send its username and
+# password to the server they name (see docs/security.md). Remove these two
+# roles if that must be limited to a narrower group.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vsphere-populator-source-editor
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+  - apiGroups: [vsphere-populator.sudharsanomprakash.github.io]
+    resources: [vspherevolumesources]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vsphere-populator-source-viewer
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: [vsphere-populator.sudharsanomprakash.github.io]
+    resources: [vspherevolumesources]
+    verbs: [get, list, watch]

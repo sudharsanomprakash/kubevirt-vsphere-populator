@@ -1,0 +1,5 @@
+.git
+bin
+dist
+testdata/external
+hack/e2e/work

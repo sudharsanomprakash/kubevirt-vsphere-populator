@@ -1,0 +1,18 @@
+# Block mode: the raw disk is written to the start of the device; bytes
+# beyond the disk size are cleared.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-01-root-block
+  namespace: vm-migration
+spec:
+  accessModes: [ReadWriteOnce]
+  volumeMode: Block
+  storageClassName: csi-example   # must use a CSI provisioner that supports Block
+  resources:
+    requests:
+      storage: 20Gi
+  dataSourceRef:
+    apiGroup: vsphere-populator.sudharsanomprakash.github.io
+    kind: VSphereVolumeSource
+    name: app-01-disk0

@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+# Controller image: a static binary on distroless. Base images are pinned by digest.
+FROM docker.io/library/golang:1.27.1-trixie@sha256:433790e515d27dc6003e847e644cc0af956985cf315c1c58a3b73ee2dd305183 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build \
+    -ldflags "-s -w -X github.com/sudharsanomprakash/kubevirt-vsphere-populator/internal/version.Version=${VERSION} -X github.com/sudharsanomprakash/kubevirt-vsphere-populator/internal/version.Commit=${COMMIT}" \
+    -o /out/vsphere-populator-controller ./cmd/vsphere-populator-controller
+
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+COPY --from=build /out/vsphere-populator-controller /usr/local/bin/vsphere-populator-controller
+COPY LICENSE NOTICE /licenses/
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/vsphere-populator-controller"]

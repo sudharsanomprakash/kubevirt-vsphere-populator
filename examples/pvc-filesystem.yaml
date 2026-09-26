@@ -1,0 +1,19 @@
+# Filesystem mode: the raw disk is written to /disk.img in the volume, which
+# is where KubeVirt looks for a disk image on a filesystem PVC. Request at
+# least the disk size plus filesystem overhead.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-01-root
+  namespace: vm-migration
+spec:
+  accessModes: [ReadWriteOnce]
+  volumeMode: Filesystem
+  storageClassName: csi-example   # must use a CSI provisioner
+  resources:
+    requests:
+      storage: 22Gi
+  dataSourceRef:
+    apiGroup: vsphere-populator.sudharsanomprakash.github.io
+    kind: VSphereVolumeSource
+    name: app-01-disk0

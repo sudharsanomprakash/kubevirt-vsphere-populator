@@ -1,0 +1,26 @@
+# Attaching a populated PVC to a KubeVirt VM. NOT verified by this project:
+# no KubeVirt boot has been performed (see docs/compatibility.md). The disk
+# is copied as-is; no guest conversion (virtio drivers, etc.) is performed,
+# so the bus must be one the guest already supports.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: app-01
+  namespace: vm-migration
+spec:
+  runStrategy: Halted
+  template:
+    spec:
+      domain:
+        devices:
+          disks:
+            - name: root
+              disk:
+                bus: sata
+        resources:
+          requests:
+            memory: 2Gi
+      volumes:
+        - name: root
+          persistentVolumeClaim:
+            claimName: app-01-root

@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - manager/namespace.yaml
+  - crd/vsphere-populator.sudharsanomprakash.github.io_vspherevolumesources.yaml
+  - rbac/rbac.yaml
+  - manager/deployment.yaml
+images:
+  - name: ghcr.io/sudharsanomprakash/kubevirt-vsphere-populator-controller
+    newTag: v0.1.0-alpha.0
