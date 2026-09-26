@@ -1,0 +1,8 @@
+/bin/
+/dist/
+/testdata/external/
+/.cache/
+*.test
+*.out
+/hack/e2e/work/
+cover.out
