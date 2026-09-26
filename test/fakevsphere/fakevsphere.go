@@ -892,8 +892,9 @@ func (s *Server) serveNFC(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.ChangeOnRepeat && repeat > 0 {
 		stream = append([]byte(nil), stream...)
-		// Change a byte inside the first grain's compressed payload.
-		stream[64*1024+100] ^= byte(repeat)
+		// Change a padding byte of the header sector, which leaves the
+		// stream parseable but different.
+		stream[300] ^= byte(repeat)
 	}
 	if b.CorruptAt > 0 && b.CorruptAt < int64(len(stream)) {
 		stream = append([]byte(nil), stream...)
