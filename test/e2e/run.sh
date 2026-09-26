@@ -65,7 +65,7 @@ build_csi() {
   if [[ ! -x "$TOOLS/bin/$out" ]]; then
     rm -rf "$WORK/src/$repo"
     git clone -q --depth 1 -b "$tag" "https://github.com/kubernetes-csi/$repo.git" "$WORK/src/$repo"
-    (cd "$WORK/src/$repo" && CGO_ENABLED=0 GOTOOLCHAIN=auto go build -o "$TOOLS/bin/$out" "$pkg")
+    (cd "$WORK/src/$repo" && CGO_ENABLED=0 GOTOOLCHAIN=auto go build -ldflags "-X main.version=$tag" -o "$TOOLS/bin/$out" "$pkg")
   fi
 }
 build_csi csi-driver-host-path "$HOSTPATH_TAG" ./cmd/hostpathplugin hostpathplugin
