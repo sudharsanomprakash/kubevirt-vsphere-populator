@@ -65,11 +65,11 @@ func (b *Block) Prepare(virtualSize int64) error {
 	}
 	size, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("determine device size: %w", err)
 	}
 	if size < virtualSize {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("%w: device has %d bytes, the disk needs %d", ErrCapacity, size, virtualSize)
 	}
 	b.f, b.size, b.virtualSize = f, size, virtualSize
@@ -126,7 +126,7 @@ func zeroRange(ctx context.Context, f *os.File, off, n int64) (string, error) {
 	alignedEnd := end / align * align
 	if st, err := f.Stat(); err == nil && st.Mode()&os.ModeDevice != 0 && alignedEnd > alignedStart {
 		rng := [2]uint64{uint64(alignedStart), uint64(alignedEnd - alignedStart)}
-		_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), blkZeroOut, uintptr(unsafe.Pointer(&rng[0])))
+		_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), blkZeroOut, uintptr(unsafe.Pointer(&rng[0]))) //nolint:gosec // BLKZEROOUT takes a pointer to a two-element uint64 range
 		if errno == 0 {
 			if err := writeZeros(ctx, f, off, alignedStart-off); err != nil {
 				return "", err

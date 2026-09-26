@@ -89,7 +89,7 @@ func (c *Client) ResolveVM(ctx context.Context, sel VMSelector) (types.ManagedOb
 		ref := types.ManagedObjectReference{Type: "VirtualMachine", Value: strings.TrimPrefix(sel.MoRef, "VirtualMachine:")}
 		var vm mo.VirtualMachine
 		if err := property.DefaultCollector(c.Client).RetrieveOne(ctx, ref, []string{"name"}, &vm); err != nil {
-			return zero, fmt.Errorf("%w: %s: %v", ErrNotFound, sel, err)
+			return zero, fmt.Errorf("%w: %s: %w", ErrNotFound, sel, err)
 		}
 		return ref, nil
 	case sel.InstanceUUID != "" || sel.BIOSUUID != "":

@@ -232,7 +232,7 @@ func (c *Client) PrepareNFCURL(dev types.HttpNfcLeaseDeviceUrl) (*url.URL, error
 		if _, _, err := net.SplitHostPort(host); err != nil {
 			host = net.JoinHostPort(host, "443")
 		}
-		c.Client.Client.SetThumbprint(host, dev.SslThumbprint)
+		c.SetThumbprint(host, dev.SslThumbprint)
 	}
 	return u, nil
 }

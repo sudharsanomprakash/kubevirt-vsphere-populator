@@ -204,7 +204,9 @@ func diag(ctx context.Context, args []string) error {
 		defer f.Close()
 		w = f
 	}
-	fmt.Fprintln(w, string(b))
+	if _, werr := fmt.Fprintln(w, string(b)); werr != nil {
+		return werr
+	}
 	return err
 }
 

@@ -1,0 +1,51 @@
+# Test double only: govmomi's vcsim extended with an ExportVm implementation
+# (test/fakevsphere). It is not a vSphere server.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fake-vsphere
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-vsphere
+  namespace: fake-vsphere
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: fake-vsphere}
+  template:
+    metadata:
+      labels: {app: fake-vsphere}
+    spec:
+      containers:
+        - name: fake-vsphere
+          image: kvsp-e2e/tools:local
+          imagePullPolicy: Never
+          command: [/usr/local/bin/fake-vsphere]
+          args:
+            - --sdk-listen=:8989
+            - --nfc-listen=:9443
+            - --nfc-advertise-host=fake-vsphere.fake-vsphere.svc
+            - --vm-name=e2e-app-01
+            - --disk=lsilogic:0:0=/e2e-data/ubuntu-source.raw
+            - --disk=lsilogic:0:1=/e2e-data/synthetic-block.raw
+          readinessProbe:
+            exec: {command: [test, -f, /tmp/ready]}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /e2e-data, readOnly: true}
+      volumes:
+        - name: data
+          hostPath: {path: /e2e-data, type: Directory}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fake-vsphere
+  namespace: fake-vsphere
+spec:
+  selector: {app: fake-vsphere}
+  ports:
+    - {name: sdk, port: 8989, targetPort: 8989}
+    - {name: nfc, port: 9443, targetPort: 9443}

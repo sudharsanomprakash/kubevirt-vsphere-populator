@@ -68,7 +68,7 @@ func (f *File) Prepare(virtualSize int64) error {
 		return fmt.Errorf("open lock file: %w", err)
 	}
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		lock.Close()
+		_ = lock.Close()
 		return fmt.Errorf("destination volume is locked by another writer: %w", err)
 	}
 	f.lock = lock
@@ -96,7 +96,7 @@ func (f *File) Flush(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("open converted image: %w", err)
 	}
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 	st, err := p.Stat()
 	if err != nil {
 		return err

@@ -105,7 +105,7 @@ func TestKeepaliveInterval(t *testing.T) {
 
 func TestMethodFaultFromValueDetail(t *testing.T) {
 	err := soap.WrapSoapFault(&soap.Fault{Detail: struct {
-		Fault types.AnyType `xml:",any,typeattr"`
+		Fault types.AnyType `xml:",any,typeattr"` //nolint:staticcheck // must match soap.Fault.Detail exactly
 	}{Fault: types.InvalidState{}}})
 	if _, ok := MethodFault(fmt.Errorf("wrapped: %w", err)).(*types.InvalidState); !ok {
 		t.Fatalf("value fault detail not recognized: %T", MethodFault(err))

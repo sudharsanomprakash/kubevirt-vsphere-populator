@@ -8,7 +8,7 @@ package diagnose
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // reported for comparison with SHA-1 vSphere manifests
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -393,7 +393,7 @@ func fullRead(ctx context.Context, hc *http.Client, u *url.URL, idle time.Durati
 		return fr
 	}
 	defer resp.Body.Close()
-	h1, h256 := sha1.New(), sha256.New()
+	h1, h256 := sha1.New(), sha256.New() //nolint:gosec // see import comment
 	cr := &counter{}
 	res, err := vmdk.Decode(io.TeeReader(resp.Body, io.MultiWriter(h1, h256, cr)), vmdk.DecodeOptions{})
 	fr.Bytes = cr.n

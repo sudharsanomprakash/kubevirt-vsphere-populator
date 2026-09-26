@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,7 +69,7 @@ type Options struct {
 // Reconciler reconciles PVCs that reference a VSphereVolumeSource.
 type Reconciler struct {
 	client.Client
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	Opts     Options
 }
 
@@ -110,30 +110,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if _, ok := pv.Annotations[AnnPopulatedFrom]; !ok {
 			// Bound to a volume we did not populate (for example a
 			// pre-bound volumeName). Do not claim success.
-			r.Recorder.Eventf(&pvc, corev1.EventTypeWarning, ReasonUnsupported,
+			r.Recorder.Eventf(&pvc, nil, corev1.EventTypeWarning, ReasonUnsupported, "Populate",
 				"PVC was bound to PersistentVolume %s that was not populated by this controller", pv.Name)
 			return r.finish(ctx, &pvc, srcName, v1alpha1.PhaseFailed, "bound to a volume that was not populated from the source", nil)
 		}
 		logger.Info("population finished", "pv", pv.Name)
-		r.Recorder.Eventf(&pvc, corev1.EventTypeNormal, ReasonFinished, "PVC bound to populated volume %s", pv.Name)
+		r.Recorder.Eventf(&pvc, nil, corev1.EventTypeNormal, ReasonFinished, "Populate", "PVC bound to populated volume %s", pv.Name)
 		return r.finish(ctx, &pvc, srcName, v1alpha1.PhaseSucceeded, "populated and bound to "+pv.Name, nil)
 	}
 
 	if ns := pvc.Spec.DataSourceRef.Namespace; ns != nil && *ns != "" && *ns != pvc.Namespace {
-		r.Recorder.Event(&pvc, corev1.EventTypeWarning, ReasonUnsupported, "cross-namespace dataSourceRef is not supported")
+		r.Recorder.Eventf(&pvc, nil, corev1.EventTypeWarning, ReasonUnsupported, "Populate", "%s", "cross-namespace dataSourceRef is not supported")
 		return ctrl.Result{}, nil
 	}
 
 	var src v1alpha1.VSphereVolumeSource
 	if err := r.Get(ctx, types.NamespacedName{Namespace: pvc.Namespace, Name: srcName}, &src); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.Recorder.Eventf(&pvc, corev1.EventTypeWarning, ReasonSourceNotFound, "VSphereVolumeSource %s not found", srcName)
+			r.Recorder.Eventf(&pvc, nil, corev1.EventTypeWarning, ReasonSourceNotFound, "Populate", "VSphereVolumeSource %s not found", srcName)
 			return ctrl.Result{}, nil // the source watch requeues
 		}
 		return ctrl.Result{}, err
 	}
 	if err := ValidateSource(&src, r.Opts.AllowInsecureTLS, r.Opts.AllowedServer); err != nil {
-		r.Recorder.Event(&pvc, corev1.EventTypeWarning, ReasonInvalidSource, err.Error())
+		r.Recorder.Eventf(&pvc, nil, corev1.EventTypeWarning, ReasonInvalidSource, "Populate", "%s", err.Error())
 		_ = r.setAccepted(ctx, &src, false, "Invalid", err.Error())
 		return ctrl.Result{}, r.updatePopulation(ctx, &src, &pvc, func(p *v1alpha1.PopulationStatus) {
 			p.Phase, p.Message = v1alpha1.PhaseFailed, err.Error()
@@ -145,7 +145,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
 		msg := "the PVC must name a StorageClass with a CSI provisioner; static volumes cannot be populated"
-		r.Recorder.Event(&pvc, corev1.EventTypeWarning, ReasonUnsupported, msg)
+		r.Recorder.Eventf(&pvc, nil, corev1.EventTypeWarning, ReasonUnsupported, "Populate", "%s", msg)
 		return ctrl.Result{}, r.updatePopulation(ctx, &src, &pvc, func(p *v1alpha1.PopulationStatus) { p.Phase, p.Message = v1alpha1.PhaseFailed, msg })
 	}
 	var sc storagev1.StorageClass
@@ -188,7 +188,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, err
 		}
 		logger.Info("created worker job", "job", j.Name)
-		r.Recorder.Eventf(&pvc, corev1.EventTypeNormal, ReasonStarted, "started worker Job %s", j.Name)
+		r.Recorder.Eventf(&pvc, nil, corev1.EventTypeNormal, ReasonStarted, "Populate", "started worker Job %s", j.Name)
 		now := metav1.Now()
 		return ctrl.Result{}, r.updatePopulation(ctx, &src, &pvc, func(p *v1alpha1.PopulationStatus) {
 			p.Phase, p.Message, p.JobName = v1alpha1.PhaseRunning, "worker started", j.Name
@@ -214,7 +214,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if t, _ := r.lastTermination(ctx, &job, corev1.PodFailed); t != nil && t.Error != "" {
 			msg = t.Error
 		}
-		r.Recorder.Eventf(&pvc, corev1.EventTypeWarning, ReasonFailed, "population failed after %d attempt(s): %s", job.Status.Failed, msg)
+		r.Recorder.Eventf(&pvc, nil, corev1.EventTypeWarning, ReasonFailed, "Populate", "population failed after %d attempt(s): %s", job.Status.Failed, msg)
 		now := metav1.Now()
 		return ctrl.Result{}, r.updatePopulation(ctx, &src, &pvc, func(p *v1alpha1.PopulationStatus) {
 			p.Phase, p.Message, p.FailedAttempts, p.CompletionTime = v1alpha1.PhaseFailed, msg, job.Status.Failed, &now
@@ -265,7 +265,7 @@ func (r *Reconciler) handleComplete(ctx context.Context, pvc, prime *corev1.Pers
 	}
 	if msg := validateTermination(t, pvc); msg != "" {
 		// A completed Job alone is not proof of a correct disk.
-		r.Recorder.Event(pvc, corev1.EventTypeWarning, ReasonNoValidationData, msg)
+		r.Recorder.Eventf(pvc, nil, corev1.EventTypeWarning, ReasonNoValidationData, "Populate", "%s", msg)
 		now := metav1.Now()
 		return ctrl.Result{}, r.updatePopulation(ctx, src, pvc, func(p *v1alpha1.PopulationStatus) {
 			p.Phase, p.Message, p.CompletionTime = v1alpha1.PhaseFailed, msg, &now
@@ -293,7 +293,7 @@ func (r *Reconciler) handleComplete(ctx context.Context, pvc, prime *corev1.Pers
 			p.Phase, p.Message, p.Result = v1alpha1.PhaseRebinding, "waiting for the PVC to bind to "+pv.Name, result
 		})
 	case ref != nil && ref.UID == prime.UID:
-		r.Recorder.Eventf(pvc, corev1.EventTypeNormal, ReasonValidated,
+		r.Recorder.Eventf(pvc, nil, corev1.EventTypeNormal, ReasonValidated, "Populate",
 			"destination digest %s matches the independently decoded export (%d bytes)", t.DestinationDigest, t.VirtualSize)
 		patch := map[string]any{
 			"metadata": map[string]any{"annotations": map[string]string{
@@ -309,7 +309,7 @@ func (r *Reconciler) handleComplete(ctx context.Context, pvc, prime *corev1.Pers
 		if err := r.Patch(ctx, &pv, client.RawPatch(types.StrategicMergePatchType, b)); err != nil {
 			return ctrl.Result{}, err
 		}
-		r.Recorder.Eventf(pvc, corev1.EventTypeNormal, ReasonRebound, "rebound populated volume %s to this PVC", pv.Name)
+		r.Recorder.Eventf(pvc, nil, corev1.EventTypeNormal, ReasonRebound, "Populate", "rebound populated volume %s to this PVC", pv.Name)
 		return ctrl.Result{}, r.updatePopulation(ctx, src, pvc, func(p *v1alpha1.PopulationStatus) {
 			p.Phase, p.Message, p.Result = v1alpha1.PhaseRebinding, "rebound "+pv.Name, result
 		})
@@ -362,7 +362,7 @@ func (r *Reconciler) lastTermination(ctx context.Context, job *batchv1.Job, phas
 		if cs.Name == workerContainer && cs.State.Terminated != nil && cs.State.Terminated.Message != "" {
 			var t worker.Termination
 			if err := json.Unmarshal([]byte(cs.State.Terminated.Message), &t); err != nil {
-				return nil, nil
+				return nil, nil //nolint:nilerr // a malformed message is treated as missing validation evidence
 			}
 			return &t, nil
 		}
@@ -462,7 +462,7 @@ func (r *Reconciler) finish(ctx context.Context, pvc *corev1.PersistentVolumeCla
 	if err := r.Get(ctx, types.NamespacedName{Namespace: pvc.Namespace, Name: srcName}, &src); err == nil {
 		now := metav1.Now()
 		if phase == v1alpha1.PhaseCancelled {
-			r.Recorder.Event(pvc, corev1.EventTypeNormal, ReasonCancelled, msg)
+			r.Recorder.Eventf(pvc, nil, corev1.EventTypeNormal, ReasonCancelled, "Populate", "%s", msg)
 		}
 		if err := r.updatePopulation(ctx, &src, pvc, func(p *v1alpha1.PopulationStatus) {
 			p.Phase, p.Message, p.Progress = phase, msg, nil

@@ -326,7 +326,7 @@ func inflateInto(zr *io.ReadCloser, compressed, out []byte) (int, error) {
 		if m > 0 {
 			return n, errors.New("decompressed data exceeds the grain size")
 		}
-		if err2 != io.EOF {
+		if !errors.Is(err2, io.EOF) {
 			if err2 == nil {
 				err2 = errors.New("compressed stream did not terminate")
 			}

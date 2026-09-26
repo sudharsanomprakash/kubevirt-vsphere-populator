@@ -1,0 +1,169 @@
+# Minimal csi-driver-host-path deployment for the e2e test, adapted from
+# kubernetes-csi/csi-driver-host-path and kubernetes-csi/external-provisioner
+# (Apache-2.0). Images are built from pinned upstream tags by run.sh.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-hostpath
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-hostpath
+  namespace: csi-hostpath
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: e2e-external-provisioner-runner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "volumeattachments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots", "volumesnapshotcontents"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: e2e-csi-hostpath-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: csi-hostpath
+    namespace: csi-hostpath
+roleRef:
+  kind: ClusterRole
+  name: e2e-external-provisioner-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: csi-hostpath
+  name: e2e-external-provisioner-cfg
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "watch", "list", "delete", "update", "create"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csistoragecapacities"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: e2e-csi-hostpath-provisioner-cfg
+  namespace: csi-hostpath
+subjects:
+  - kind: ServiceAccount
+    name: csi-hostpath
+    namespace: csi-hostpath
+roleRef:
+  kind: Role
+  name: e2e-external-provisioner-cfg
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: hostpath.csi.k8s.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes: [Persistent]
+  fsGroupPolicy: File
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-hostpath
+  namespace: csi-hostpath
+spec:
+  selector:
+    matchLabels: {app: csi-hostpath}
+  template:
+    metadata:
+      labels: {app: csi-hostpath}
+    spec:
+      serviceAccountName: csi-hostpath
+      containers:
+        - name: hostpath
+          image: kvsp-e2e/tools:local
+          imagePullPolicy: Never
+          command: [/usr/local/bin/hostpathplugin]
+          args: ["--drivername=hostpath.csi.k8s.io", "--v=4", "--endpoint=unix:///csi/csi.sock", "--nodeid=$(KUBE_NODE_NAME)"]
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          securityContext: {privileged: true}
+          volumeMounts:
+            - {mountPath: /csi, name: socket-dir}
+            - {mountPath: /var/lib/kubelet/pods, mountPropagation: Bidirectional, name: mountpoint-dir}
+            - {mountPath: /var/lib/kubelet/plugins, mountPropagation: Bidirectional, name: plugins-dir}
+            - {mountPath: /csi-data-dir, name: csi-data-dir}
+            - {mountPath: /dev, name: dev-dir}
+        - name: node-driver-registrar
+          image: kvsp-e2e/tools:local
+          imagePullPolicy: Never
+          command: [/usr/local/bin/csi-node-driver-registrar]
+          args: ["--v=2", "--csi-address=/csi/csi.sock", "--kubelet-registration-path=/var/lib/kubelet/plugins/csi-hostpath/csi.sock"]
+          securityContext: {privileged: true}
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          volumeMounts:
+            - {mountPath: /csi, name: socket-dir}
+            - {mountPath: /registration, name: registration-dir}
+        - name: csi-provisioner
+          image: kvsp-e2e/tools:local
+          imagePullPolicy: Never
+          command: [/usr/local/bin/csi-provisioner]
+          args: ["--v=2", "--csi-address=/csi/csi.sock", "--feature-gates=Topology=true", "--node-deployment=true", "--leader-election=false"]
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          securityContext: {privileged: true}
+          volumeMounts:
+            - {mountPath: /csi, name: socket-dir}
+      volumes:
+        - {name: socket-dir, hostPath: {path: /var/lib/kubelet/plugins/csi-hostpath, type: DirectoryOrCreate}}
+        - {name: mountpoint-dir, hostPath: {path: /var/lib/kubelet/pods, type: DirectoryOrCreate}}
+        - {name: registration-dir, hostPath: {path: /var/lib/kubelet/plugins_registry, type: Directory}}
+        - {name: plugins-dir, hostPath: {path: /var/lib/kubelet/plugins, type: Directory}}
+        - {name: csi-data-dir, hostPath: {path: /var/lib/csi-hostpath-data/, type: DirectoryOrCreate}}
+        - {name: dev-dir, hostPath: {path: /dev, type: Directory}}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-hostpath-immediate
+provisioner: hostpath.csi.k8s.io
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-hostpath-wffc
+provisioner: hostpath.csi.k8s.io
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer

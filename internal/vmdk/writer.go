@@ -107,7 +107,7 @@ func WriteStreamOptimized(w io.Writer, src io.ReaderAt, size int64, opts WriterO
 		order[i] = uint64(i)
 	}
 	if opts.ShuffleSeed != 0 {
-		rng := rand.New(rand.NewPCG(opts.ShuffleSeed, opts.ShuffleSeed^0x9e3779b97f4a7c15))
+		rng := rand.New(rand.NewPCG(opts.ShuffleSeed, opts.ShuffleSeed^0x9e3779b97f4a7c15)) //nolint:gosec // deterministic test ordering, not security relevant
 		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
 	}
 

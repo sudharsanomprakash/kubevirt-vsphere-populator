@@ -56,5 +56,5 @@ func WriteTermination(path string, r *Result) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	return os.WriteFile(path, b, 0o600)
 }

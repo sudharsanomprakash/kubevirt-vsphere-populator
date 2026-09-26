@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vm-migration-e2e
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vsphere-credentials
+  namespace: vm-migration-e2e
+stringData:
+  username: migrator@vsphere.example
+  password: not-a-real-password-1234
+  thumbprint: __THUMBPRINT__
+---
+# Filesystem mode, Immediate binding: a bootable Ubuntu disk.
+apiVersion: vsphere-populator.sudharsanomprakash.github.io/v1alpha1
+kind: VSphereVolumeSource
+metadata:
+  name: app-01-disk0
+  namespace: vm-migration-e2e
+spec:
+  server: fake-vsphere.fake-vsphere.svc:8989
+  credentialsSecretRef: {name: vsphere-credentials}
+  virtualMachine: {instanceUUID: __INSTANCE_UUID__}
+  disk:
+    busLocation: scsi:0:0
+    expectedCapacityBytes: __DISK0_SIZE__
+  transfer: {requireManifest: true}
+  worker: {backoffLimit: 1}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-01-root
+  namespace: vm-migration-e2e
+spec:
+  accessModes: [ReadWriteOnce]
+  volumeMode: Filesystem
+  storageClassName: csi-hostpath-immediate
+  resources: {requests: {storage: 4Gi}}
+  dataSourceRef:
+    apiGroup: vsphere-populator.sudharsanomprakash.github.io
+    kind: VSphereVolumeSource
+    name: app-01-disk0
+---
+# Block mode, WaitForFirstConsumer: a synthetic disk with an odd size.
+apiVersion: vsphere-populator.sudharsanomprakash.github.io/v1alpha1
+kind: VSphereVolumeSource
+metadata:
+  name: app-01-disk1
+  namespace: vm-migration-e2e
+spec:
+  server: fake-vsphere.fake-vsphere.svc:8989
+  credentialsSecretRef: {name: vsphere-credentials}
+  virtualMachine: {instanceUUID: __INSTANCE_UUID__}
+  disk: {busLocation: scsi:0:1}
+  worker: {backoffLimit: 1}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-01-data
+  namespace: vm-migration-e2e
+spec:
+  accessModes: [ReadWriteOnce]
+  volumeMode: Block
+  storageClassName: csi-hostpath-wffc
+  resources: {requests: {storage: 512Mi}}
+  dataSourceRef:
+    apiGroup: vsphere-populator.sudharsanomprakash.github.io
+    kind: VSphereVolumeSource
+    name: app-01-disk1
+---
+# First consumer of the WaitForFirstConsumer PVC; it reads the populated
+# device and prints its SHA-256 over the source disk length.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: block-consumer
+  namespace: vm-migration-e2e
+spec:
+  restartPolicy: Never
+  containers:
+    - name: reader
+      image: kvsp-worker:e2e
+      imagePullPolicy: Never
+      securityContext: {runAsUser: 0}
+      command: [sh, -c, 'echo "size=$(blockdev --getsize64 /dev/xvda)"; head -c __DISK1_SIZE__ /dev/xvda | sha256sum; tail -c +$((__DISK1_SIZE__+1)) /dev/xvda | tr -d "\0" | wc -c | sed "s/^/nonzero-tail-bytes=/"']
+      volumeDevices:
+        - {name: data, devicePath: /dev/xvda}
+  volumes:
+    - name: data
+      persistentVolumeClaim: {claimName: app-01-data}

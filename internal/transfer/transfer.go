@@ -91,13 +91,13 @@ func Get(ctx context.Context, client *http.Client, u *url.URL, opts Options) (*R
 	}
 	if !ok {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		idle.stop()
 		cancel(nil)
 		return nil, &StatusError{Code: resp.StatusCode, Status: resp.Status}
 	}
 	if enc := resp.Header.Get("Content-Encoding"); enc != "" && enc != "identity" {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		idle.stop()
 		cancel(nil)
 		return nil, fmt.Errorf("unexpected Content-Encoding %q", enc)
@@ -147,19 +147,25 @@ func (b *body) Read(p []byte) (int, error) {
 	if n > 0 {
 		b.idle.reset()
 	}
-	if err != nil && err != io.EOF {
-		if cause := context.Cause(b.ctx); errors.Is(cause, ErrIdle) {
+	if err == nil {
+		return n, nil
+	}
+	// When the request was cancelled (idle timeout, caller cancellation), the
+	// server may still terminate a chunked response cleanly, so a plain EOF
+	// is not proof that the stream is complete: report the cancellation.
+	if cause := context.Cause(b.ctx); cause != nil {
+		if errors.Is(cause, ErrIdle) {
 			return n, fmt.Errorf("%w after %d bytes", ErrIdle, b.n)
 		}
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			if b.want < 0 {
-				return n, fmt.Errorf("connection closed before the end of the chunked response after %d bytes: %w", b.n, io.ErrUnexpectedEOF)
-			}
-			return n, fmt.Errorf("%w: got %d of %d bytes", ErrShortBody, b.n, b.want)
-		}
-		return n, err
+		return n, fmt.Errorf("transfer cancelled after %d bytes: %w", b.n, cause)
 	}
-	if err == io.EOF && b.want >= 0 && b.n != b.want {
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		if b.want < 0 {
+			return n, fmt.Errorf("connection closed before the end of the chunked response after %d bytes: %w", b.n, io.ErrUnexpectedEOF)
+		}
+		return n, fmt.Errorf("%w: got %d of %d bytes", ErrShortBody, b.n, b.want)
+	}
+	if errors.Is(err, io.EOF) && b.want >= 0 && b.n != b.want {
 		return n, fmt.Errorf("%w: got %d of %d bytes", ErrShortBody, b.n, b.want)
 	}
 	return n, err
@@ -194,7 +200,7 @@ func NewStaging(dir string, limit, minBytes int64) (*Staging, error) {
 	if err := unix.Statfs(dir, &st); err != nil {
 		return nil, fmt.Errorf("statfs staging directory: %w", err)
 	}
-	avail := int64(st.Bavail)*int64(st.Bsize) - StagingReserve
+	avail := int64(st.Bavail)*st.Bsize - StagingReserve
 	if limit <= 0 || limit > avail {
 		limit = avail
 	}

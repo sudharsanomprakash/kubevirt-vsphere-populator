@@ -154,7 +154,7 @@ func (t *Tracker) Serve(ctx context.Context, addr string) error {
 		return err
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
+	go func() { //nolint:gosec // shutdown runs after ctx is cancelled, so it needs a fresh context
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()

@@ -31,10 +31,10 @@ import (
 func main() {
 	var (
 		workerImage, pullPolicy, scratchClass, allowedServers, metricsAddr, probeAddr, leaderNS, pullSecrets string
-		allowInsecure, leaderElect, showVersion                                                             bool
-		fileUID, blockUID                                                                                   int64
-		poll                                                                                                time.Duration
-		maxConcurrent                                                                                       int
+		allowInsecure, leaderElect, showVersion                                                              bool
+		fileUID, blockUID                                                                                    int64
+		poll                                                                                                 time.Duration
+		maxConcurrent                                                                                        int
 	)
 	flag.StringVar(&workerImage, "worker-image", "", "worker container image (required)")
 	flag.StringVar(&pullPolicy, "worker-image-pull-policy", string(corev1.PullIfNotPresent), "worker image pull policy")
@@ -108,7 +108,7 @@ func main() {
 	}
 	r := &controller.Reconciler{
 		Client:   mgr.GetClient(),
-		Recorder: mgr.GetEventRecorderFor("vsphere-populator"),
+		Recorder: mgr.GetEventRecorder("vsphere-populator"),
 		Opts: controller.Options{
 			Job: controller.JobOptions{Image: workerImage, ImagePullPolicy: corev1.PullPolicy(pullPolicy),
 				FileRunAsUser: fileUID, BlockRunAsUser: blockUID, DefaultScratchStorageClass: scratchClass, ImagePullSecrets: secrets},

@@ -8,9 +8,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
 // Group, version and kind of the API.
@@ -24,13 +24,15 @@ var (
 	// GroupVersion is the API group and version.
 	GroupVersion = schema.GroupVersion{Group: Group, Version: Version}
 	// SchemeBuilder registers the types.
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 	// AddToScheme adds the types to a scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
 
-func init() {
-	SchemeBuilder.Register(&VSphereVolumeSource{}, &VSphereVolumeSourceList{})
+func addKnownTypes(s *runtime.Scheme) error {
+	s.AddKnownTypes(GroupVersion, &VSphereVolumeSource{}, &VSphereVolumeSourceList{})
+	metav1.AddToGroupVersion(s, GroupVersion)
+	return nil
 }
 
 // VSphereVolumeSource describes one virtual disk of a powered-off vSphere VM

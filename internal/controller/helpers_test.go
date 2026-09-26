@@ -8,10 +8,7 @@ import (
 
 type noopRecorder struct{}
 
-func (noopRecorder) Event(runtime.Object, string, string, string)          {}
-func (noopRecorder) Eventf(runtime.Object, string, string, string, ...any) {}
-func (noopRecorder) AnnotatedEventf(runtime.Object, map[string]string, string, string, string, ...any) {
-}
+func (noopRecorder) Eventf(runtime.Object, runtime.Object, string, string, string, string, ...any) {}
 
 // configController allows several managers with the same controller name in one process.
 func configController() config.Controller { return config.Controller{SkipNameValidation: ptr.To(true)} }

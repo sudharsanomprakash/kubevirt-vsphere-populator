@@ -27,7 +27,7 @@ const (
 	AnnSelectedNode    = "volume.kubernetes.io/selected-node"
 	primePrefix        = "vsphere-populator-prime-"
 	jobPrefix          = "vsphere-populator-"
-	credentialsMount   = "/etc/vsphere-populator/credentials"
+	credentialsMount   = "/etc/vsphere-populator/credentials" //nolint:gosec // a mount path, not a credential
 	scratchMount       = "/scratch"
 	fileTargetMount    = "/target"
 	blockTargetDevice  = "/dev/vsphere-populator-target"
@@ -161,7 +161,7 @@ func BuildJob(pvc *corev1.PersistentVolumeClaim, prime *corev1.PersistentVolumeC
 	var deadline *int64
 	var tolerations []corev1.Toleration
 	var resources corev1.ResourceRequirements
-	var scratchClass string = opts.DefaultScratchStorageClass
+	scratchClass := opts.DefaultScratchStorageClass
 	if w := src.Spec.Worker; w != nil {
 		if w.BackoffLimit != nil {
 			backoff = *w.BackoffLimit

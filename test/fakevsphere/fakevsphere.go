@@ -38,6 +38,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/vmware/govmomi/find"
@@ -68,6 +69,9 @@ type NFCBehavior struct {
 	Status int
 	// TruncateAfter closes the connection after this many body bytes.
 	TruncateAfter int64
+	// CleanEndAfter ends the response normally (a valid chunked terminator)
+	// after this many bytes, so the client sees an ordinary end of body.
+	CleanEndAfter int64
 	// StallAfter stops sending (without closing) after this many bytes.
 	StallAfter int64
 	// BytesPerSecond throttles the response (0 = unlimited).
@@ -132,6 +136,9 @@ type Disk struct {
 	// Raw is the guest disk content; its length is the capacity unless
 	// CapacityBytes is set.
 	Raw []byte
+	// RawFile, if set, is a raw disk image file used instead of Raw. Its
+	// encoded stream is written to a temporary file and memory-mapped.
+	RawFile string
 	// Stream, if set, is served verbatim instead of an encoding of Raw.
 	Stream        []byte
 	CapacityBytes int64
@@ -206,20 +213,28 @@ type Server struct {
 	// NFCCAFile trusts the NFC server certificate.
 	NFCCAFile string
 
-	mu     sync.Mutex
-	nfcB   NFCBehavior
-	leaseB LeaseBehavior
-	vms    map[string]*VM
-	leases map[string]*LeaseRecord
-	byTkt  map[string]*LeaseRecord
-	dir    string
-	stop   chan struct{}
+	mu      sync.Mutex
+	nfcB    NFCBehavior
+	leaseB  LeaseBehavior
+	vms     map[string]*VM
+	leases  map[string]*LeaseRecord
+	byTkt   map[string]*LeaseRecord
+	dir     string
+	stop    chan struct{}
+	nfcBase string
+	maps    [][]byte
 }
 
 // Options configures Start.
 type Options struct {
 	// ESX models a standalone ESXi host: lease URLs use "*" as host.
 	ESX bool
+	// SDKListen and NFCListen are listen addresses (default: random localhost ports).
+	SDKListen string
+	NFCListen string
+	// NFCAdvertiseHost replaces the host in lease URLs (vCenter mode), for
+	// example a Kubernetes Service name.
+	NFCAdvertiseHost string
 }
 
 // Start launches the simulator and the NFC server.
@@ -250,7 +265,7 @@ func Start(opts Options) (*Server, error) {
 		dir: dir, stop: make(chan struct{}), nfcB: NFCBehavior{ContentLength: false}}
 
 	m.Service.TLS = new(tls.Config)
-	m.Service.Listen = &url.URL{User: url.UserPassword(Username, Password)}
+	m.Service.Listen = &url.URL{Host: opts.SDKListen, User: url.UserPassword(Username, Password)}
 	m.Service.ServeMux = http.NewServeMux()
 	m.Service.ServeMux.Handle("/fake-nfc/", http.HandlerFunc(s.serveNFC))
 	m.Map().Handler = s.handler
@@ -278,8 +293,22 @@ func Start(opts Options) (*Server, error) {
 		return nil, err
 	}
 	s.nfc = httptest.NewUnstartedServer(http.HandlerFunc(s.serveNFC))
+	if opts.NFCListen != "" {
+		ln, err := net.Listen("tcp", opts.NFCListen)
+		if err != nil {
+			s.Close()
+			return nil, err
+		}
+		s.nfc.Listener.Close()
+		s.nfc.Listener = ln
+	}
 	s.nfc.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
 	s.nfc.StartTLS()
+	s.nfcBase = s.nfc.URL
+	if opts.NFCAdvertiseHost != "" {
+		_, port, _ := net.SplitHostPort(s.nfc.Listener.Addr().String())
+		s.nfcBase = "https://" + net.JoinHostPort(opts.NFCAdvertiseHost, port)
+	}
 	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
 	s.NFCThumbprint = soap.ThumbprintSHA1(leaf)
 
@@ -314,6 +343,9 @@ func (s *Server) Close() {
 		s.sdk.Close()
 	}
 	s.model.Remove()
+	for _, m := range s.maps {
+		_ = syscall.Munmap(m)
+	}
 	_ = os.RemoveAll(s.dir)
 }
 
@@ -421,6 +453,13 @@ func (s *Server) AddVM(ctx context.Context, spec VMSpec) (*VM, error) {
 			nextKey--
 		}
 		capacity := d.CapacityBytes
+		if capacity == 0 && d.RawFile != "" {
+			st, err := os.Stat(d.RawFile)
+			if err != nil {
+				return nil, err
+			}
+			capacity = st.Size()
+		}
 		if capacity == 0 {
 			capacity = int64(len(d.Raw))
 		}
@@ -487,6 +526,13 @@ func (s *Server) AddVM(ctx context.Context, spec VMSpec) (*VM, error) {
 		if !found {
 			return nil, fmt.Errorf("created VM lacks disk %s:%d:%d", d.Controller, d.Bus, d.Unit)
 		}
+		if d.Stream == nil && d.RawFile != "" {
+			m, err := s.encodeFile(d.RawFile)
+			if err != nil {
+				return nil, err
+			}
+			d.Stream = m
+		}
 		if d.Stream == nil {
 			var buf bytes.Buffer
 			if _, err := vmdk.WriteStreamOptimized(&buf, bytes.NewReader(d.Raw), int64(len(d.Raw)), vmdk.WriterOptions{}); err != nil {
@@ -518,6 +564,37 @@ func (s *Server) AddVM(ctx context.Context, spec VMSpec) (*VM, error) {
 	s.vms[ref.Value] = out
 	s.mu.Unlock()
 	return out, nil
+}
+
+// encodeFile encodes a raw disk file into a temporary streamOptimized file
+// and memory-maps it read-only.
+func (s *Server) encodeFile(path string) ([]byte, error) {
+	in, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	st, err := in.Stat()
+	if err != nil {
+		return nil, err
+	}
+	out, err := os.CreateTemp(s.dir, "stream-*.vmdk")
+	if err != nil {
+		return nil, err
+	}
+	defer out.Close()
+	n, err := vmdk.WriteStreamOptimized(out, in, st.Size(), vmdk.WriterOptions{})
+	if err != nil {
+		return nil, err
+	}
+	m, err := syscall.Mmap(int(out.Fd()), 0, int(n), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.maps = append(s.maps, m)
+	s.mu.Unlock()
+	return m, nil
 }
 
 func controllerName(d types.BaseVirtualDevice) string {
@@ -565,7 +642,7 @@ func (e *exporter) Reference() types.ManagedObjectReference { return e.ref }
 // ExportVm creates a lease for the VM's disks.
 func (e *exporter) ExportVm(ctx *simulator.Context, req *types.ExportVm) soap.HasFault {
 	if ctx.Session != nil {
-		ctx.Session.Registry.Remove(ctx, e.ref)
+		ctx.Session.Remove(ctx, e.ref)
 	}
 	body := &methods.ExportVmBody{}
 	vm, ok := ctx.Map.Get(e.ref).(*simulator.VirtualMachine)
@@ -688,7 +765,7 @@ func (s *Server) deviceURL(ticket, target string) string {
 	if s.ESX {
 		return "https://*/fake-nfc/" + ticket + "/" + target
 	}
-	return s.nfc.URL + "/nfc/" + ticket + "/" + target
+	return s.nfcBase + "/nfc/" + ticket + "/" + target
 }
 
 func (s *Server) nfcThumbprintFor() string {
@@ -929,6 +1006,9 @@ func (s *Server) serveNFC(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		rec.sums[target] = [2][]byte{s1[:], s2[:]}
 		s.mu.Unlock()
+	}
+	if b.CleanEndAfter > 0 && b.CleanEndAfter < int64(len(body)) {
+		body = body[:b.CleanEndAfter]
 	}
 	w.WriteHeader(status)
 	n, _ := s.write(w, r, rec, body, b)

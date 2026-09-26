@@ -35,8 +35,6 @@ const (
 	MarkerGT     uint32 = 1
 	MarkerGD     uint32 = 2
 	MarkerFooter uint32 = 3
-
-	headerFieldsSize = 79
 )
 
 // Limits applied to untrusted headers.

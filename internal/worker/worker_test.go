@@ -240,6 +240,7 @@ func TestFailuresAbortLease(t *testing.T) {
 		{name: "http 404", nfc: fakevsphere.NFCBehavior{Status: 404}, want: "404"},
 		{name: "truncated with content-length", nfc: fakevsphere.NFCBehavior{ContentLength: true, TruncateAfter: 300000}, want: "shorter than Content-Length"},
 		{name: "truncated chunked", nfc: fakevsphere.NFCBehavior{TruncateAfter: 300000}, want: "export stream"},
+		{name: "clean early end", nfc: fakevsphere.NFCBehavior{CleanEndAfter: 300000}, want: "stream truncated"},
 		{name: "stalled", nfc: fakevsphere.NFCBehavior{StallAfter: 200000}, want: "idle timeout"},
 		{name: "corrupt byte", nfc: fakevsphere.NFCBehavior{CorruptAt: 70000}, want: "export stream"},
 		{name: "wrong manifest", lease: fakevsphere.LeaseBehavior{Manifest: fakevsphere.ManifestWrong}, want: "does not match the vSphere manifest"},

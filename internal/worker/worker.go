@@ -7,7 +7,7 @@ package worker
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // vSphere manifests use SHA-1; it is compared, never relied on alone
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -320,7 +320,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger, tr *progress.Tracker
 	defer ka.Stop()
 	keepaliveErr := func(e error) error {
 		if cause := context.Cause(xctx); cause != nil && !errors.Is(cause, context.Canceled) && ctx.Err() == nil {
-			return fmt.Errorf("%w (transfer interrupted: %v)", cause, e)
+			return fmt.Errorf("%w (transfer interrupted: %w)", cause, e)
 		}
 		return e
 	}
@@ -348,7 +348,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger, tr *progress.Tracker
 	}
 	res.Export.ContentType = resp.Header.Get("Content-Type")
 	res.Export.ContentLength = resp.ContentLength
-	h1, h256 := sha1.New(), sha256.New()
+	h1, h256 := sha1.New(), sha256.New() //nolint:gosec // see import comment
 	tee := io.TeeReader(resp.Body, io.MultiWriter(staging, h1, h256))
 	dec, err := vmdk.Decode(tee, vmdk.DecodeOptions{
 		OnHeader: func(h vmdk.Header, d vmdk.Descriptor) error {
@@ -360,7 +360,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger, tr *progress.Tracker
 		},
 		OnProgress: func(p vmdk.Progress) { tr.Download(p.StreamBytes, p.GuestOffset, p.VirtualSize) },
 	})
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return res, keepaliveErr(fmt.Errorf("export stream: %w", err))
 	}
@@ -394,7 +394,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger, tr *progress.Tracker
 			return res, err
 		}
 		ra, err := vmdk.DecodeAt(f, staging.Size(), *dec.Footer, vmdk.DecodeOptions{})
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			return res, fmt.Errorf("random-access decode of staged stream: %w", err)
 		}

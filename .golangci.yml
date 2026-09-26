@@ -1,0 +1,32 @@
+version: "2"
+run:
+  timeout: 10m
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - nilerr
+    - unconvert
+    - unparam
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+        - (io.Closer).Close
+    gosec:
+      excludes:
+        - G304 # file paths come from flags/config by design
+        - G204 # qemu-img is executed with argument vectors, never a shell
+        - G115 # integer conversions are range-checked where inputs are untrusted
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, errcheck, unparam]
+      - path: test/
+        linters: [gosec, errcheck, unparam]
+formatters:
+  enable: [gofmt]

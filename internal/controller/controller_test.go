@@ -89,7 +89,7 @@ func startManager(t *testing.T, opts controller.Options) *manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &controller.Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorderFor("vsphere-populator"), Opts: opts}
+	r := &controller.Reconciler{Client: mgr.GetClient(), Recorder: mgr.GetEventRecorder("vsphere-populator"), Opts: opts}
 	if err := r.SetupWithManager(mgr, 4); err != nil {
 		t.Fatal(err)
 	}

@@ -89,7 +89,7 @@ func readBack(ctx context.Context, path string, size int64, progress VerifyProgr
 	} else {
 		res.Mode = "O_DIRECT"
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	buf := alignedBuffer(readChunk, 4096)
 	var done int64
@@ -106,12 +106,11 @@ func readBack(ctx context.Context, path string, size int64, progress VerifyProgr
 				return nil, err
 			}
 			_, _ = d.Write(tail)
-			done += want
 			break
 		}
 		n, err := f.ReadAt(buf[:want], done)
 		if int64(n) < want {
-			if err == nil || err == io.EOF {
+			if err == nil || errors.Is(err, io.EOF) {
 				err = fmt.Errorf("short read at offset %d: got %d of %d bytes: %w", done, n, want, io.ErrUnexpectedEOF)
 			}
 			return nil, err
@@ -132,7 +131,7 @@ func readTail(path string, off, n int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_ = unix.Fadvise(int(f.Fd()), off, n, unix.FADV_DONTNEED)
 	b := make([]byte, n)
 	if _, err := f.ReadAt(b, off); err != nil {
@@ -153,7 +152,7 @@ func fsyncDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	return d.Sync()
 }
 
@@ -162,7 +161,7 @@ func availableBytes(dir string) (int64, error) {
 	if err := unix.Statfs(dir, &st); err != nil {
 		return 0, err
 	}
-	return int64(st.Bavail) * int64(st.Bsize), nil
+	return int64(st.Bavail) * st.Bsize, nil
 }
 
 // AvailableBytes returns the space available to unprivileged users in the

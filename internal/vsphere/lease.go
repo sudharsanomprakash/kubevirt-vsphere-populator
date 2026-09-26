@@ -194,7 +194,7 @@ func (l *Lease) Manifest(ctx context.Context) ([]ManifestEntry, error) {
 	entries, err := l.lease.GetManifest(ctx)
 	if err != nil {
 		if MethodFault(err) != nil {
-			return nil, fmt.Errorf("%w: %v", ErrManifestUnavailable, l.c.Secrets.Error(err))
+			return nil, fmt.Errorf("%w: %w", ErrManifestUnavailable, l.c.Secrets.Error(err))
 		}
 		return nil, l.c.Secrets.Error(err)
 	}
@@ -380,7 +380,7 @@ func MatchDeviceURL(vm *VMInfo, disk *DiskInfo, urls []types.HttpNfcLeaseDeviceU
 		diskURLs++
 		k, err := ParseDeviceKey(u.Key)
 		if err != nil {
-			return zero, fmt.Errorf("%w: %v", ErrSourceState, err)
+			return zero, fmt.Errorf("%w: %w", ErrSourceState, err)
 		}
 		if k.VM != vm.Ref.Value {
 			return zero, fmt.Errorf("%w: lease device key %q refers to %q, not VM %s", ErrSourceState, u.Key, k.VM, vm.Ref.Value)
