@@ -144,7 +144,7 @@ func populate(ctx context.Context, args []string) error {
 	_ = fs.Parse(args)
 	cfg.Connection, cfg.CredentialsDir, cfg.VM, cfg.Disk = cf.connection(), cf.credsDir, cf.vm(), cf.disk()
 
-	log := newLogger(logFormat).With("version", version.Version)
+	log := newLogger(logFormat).With("workerVersion", version.Version)
 	tr := progress.New()
 	if progressAddr != "" {
 		go func() {
