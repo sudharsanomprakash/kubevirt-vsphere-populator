@@ -35,8 +35,8 @@ Loop-device tests need root and are skipped otherwise; CI runs them.
   recorded measurement. Mark untested behavior as such.
 * Never commit credentials, internal host names or customer data. Examples
   must use reserved names such as `example.test`.
-* Commits must be signed off by their author (`git commit -s`) to certify
-  the [Developer Certificate of Origin](https://developercertificate.org/).
+* By contributing you agree that your contribution is licensed under the
+  Apache License 2.0.
 
 ## Reporting issues
 
