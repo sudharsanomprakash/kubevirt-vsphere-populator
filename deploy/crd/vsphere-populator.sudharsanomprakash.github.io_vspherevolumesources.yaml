@@ -130,8 +130,8 @@ spec:
                   thumbprint:
                     description: |-
                       Thumbprint pins the server certificate by its SHA-1 or SHA-256
-                      fingerprint (hex, with or without colons). A thumbprint in the
-                      credentials Secret takes precedence.
+                      fingerprint (hex, with or without colons). When set it is used instead
+                      of a "thumbprint" key in the credentials Secret.
                     pattern: ^([0-9A-Fa-f]{2}:?){19}[0-9A-Fa-f]{2}$|^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$
                     type: string
                   trustLeaseThumbprints:
